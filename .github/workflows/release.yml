@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  workflow_dispatch:
+#  push:
+#    branches:
+#      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v3
+      - name: Cache local Maven repository
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
+      - name: Setup Java JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'adopt'
+          server-id: github
+      - run: |
+          mvn versions:set -DremoveSnapshot
+          cat pom.xml
+      - run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          MVN_VERSION=$(mvn -q -Dexec.executable=echo -Dexec.args='${project.version}' --non-recursive exec:exec)
+          echo "Release version is $MVN_VERSION"
+          git commit -a -m "Prepare release $MVN_VERSION"
+          git push
+          git tag $MVN_VERSION
+          mvn package
+          cp pom.xml target/no-annotation-$MVN_VERSION.pom
+          ls target
+          echo "RELEASE_VERSION=$MVN_VERSION" >> $GITHUB_ENV
+
+      # https://help.cloudsmith.io/docs/maven-repository#upload-via-the-cloudsmith-cli
+      - name: Cloudsmith Push
+        uses: cloudsmith-io/action@master
+        with:
+          api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
+          command: "push"
+          format: "maven"
+          owner: "red_mvn"
+          repo: "lolcowhost"
+          pom-file: "pom.xml"
+          #republish: "true" # needed ONLY if version is not changing
+          file: "target/no-annotation-${{ env.RELEASE_VERSION }}.jar"
+          
+      - run: mvn versions:set -DnextSnapshot
+      - run: |
+          git commit -a -m "Prepare next development iteration"
+          git push
