@@ -24,7 +24,7 @@ public class NoAnnotationProcessor extends AbstractProcessor {
                 }
             });
         });
-        return true;
+        return false;
     }
 
     private boolean isAnnotated(Element element) {
